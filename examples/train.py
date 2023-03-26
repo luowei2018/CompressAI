@@ -38,6 +38,7 @@ import torch.optim as optim
 
 from torch.utils.data import DataLoader
 from torchvision import transforms
+import torchvision.transforms as T
 
 from compressai.datasets import ImageFolder
 from compressai.losses import RateDistortionLoss
@@ -247,9 +248,19 @@ def main(argv):
     test_transforms = transforms.Compose(
         [transforms.CenterCrop(args.patch_size), transforms.ToTensor()]
     )
+    transform = T.Compose([
+        T.Resize(args.patch_size),
+        T.ToTensor(),
+        T.Normalize(mean=[0.485, 0.456, 0.406],
+                    std=[0.229, 0.224, 0.225])])
+                    
+    dataset = ImageFolder("/home/weiluo6/CompressAI/compressai/datasets/" + args.dataset, transform=transform)
+    train_size = int(0.6*len(dataset))
+    test_size = len(dataset) - train_size
+    train_dataset, test_dataset = torch.utils.data.random_split(dataset, [train_size, test_size])
 
-    train_dataset = ImageFolder(args.dataset, split="train", transform=train_transforms)
-    test_dataset = ImageFolder(args.dataset, split="test", transform=test_transforms)
+    #train_dataset = ImageFolder(args.dataset, split="train", transform=train_transforms)
+    #test_dataset = ImageFolder(args.dataset, split="test", transform=test_transforms)
 
     device = "cuda" if args.cuda and torch.cuda.is_available() else "cpu"
 
@@ -272,8 +283,8 @@ def main(argv):
     net = image_models[args.model](quality=3)
     net = net.to(device)
 
-    if args.cuda and torch.cuda.device_count() > 1:
-        net = CustomDataParallel(net)
+    # if args.cuda and torch.cuda.device_count() > 1:
+    #     net = CustomDataParallel(net)
 
     optimizer, aux_optimizer = configure_optimizers(net, args)
     lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, "min")

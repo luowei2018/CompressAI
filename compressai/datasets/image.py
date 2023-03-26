@@ -34,6 +34,8 @@ from torch.utils.data import Dataset
 
 from compressai.registry import register_dataset
 
+import os
+
 
 @register_dataset("ImageFolder")
 class ImageFolder(Dataset):
@@ -58,12 +60,13 @@ class ImageFolder(Dataset):
     """
 
     def __init__(self, root, transform=None, split="train"):
-        splitdir = Path(root) / split
+        #splitdir = Path(root) / split
 
-        if not splitdir.is_dir():
-            raise RuntimeError(f'Invalid directory "{root}"')
+        #if not splitdir.is_dir():
+        #    raise RuntimeError(f'Invalid directory "{root}"')
 
-        self.samples = sorted(f for f in splitdir.iterdir() if f.is_file())
+        #self.samples = sorted(f for f in splitdir.iterdir() if f.is_file())
+        self.samples = [os.path.join(root, file) for file in os.listdir(root)]
 
         self.transform = transform
 
