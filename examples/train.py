@@ -31,6 +31,7 @@ import argparse
 import random
 import shutil
 import sys
+from tqdm import tqdm
 
 import torch
 import torch.nn as nn
@@ -88,7 +89,8 @@ def train_one_epoch(
     model.train()
     device = next(model.parameters()).device
 
-    for i, d in enumerate(train_dataloader):
+    train_iter = tqdm(train_dataloader, desc=f"Train Epoch {epoch}")
+    for i, d in enumerate(train_iter):
         d = d.to(device)
 
         optimizer.zero_grad()
@@ -106,17 +108,28 @@ def train_one_epoch(
         aux_loss.backward()
         aux_optimizer.step()
 
-        if i % 10 == 0:
-            print(
-                f"Train epoch {epoch}: ["
-                f"{i*len(d)}/{len(train_dataloader.dataset)}"
-                f" ({100. * i / len(train_dataloader):.0f}%)]"
-                f'\tLoss: {out_criterion["loss"].item():.3f} |'
-                f'\tMSE loss: {out_criterion["mse_loss"].item():.3f} |'
-                f'\tpsnr: {out_criterion["psnr"]:.2f} |'
-                f'\tBpp loss: {out_criterion["bpp_loss"].item():.2f} |'
-                #f"\tAux loss: {aux_loss.item():.2f}"
-            )
+        # if i % 10 == 0:
+        #     print(
+        #         f"Train epoch {epoch}: ["
+        #         f"{i*len(d)}/{len(train_dataloader.dataset)}"
+        #         f" ({100. * i / len(train_dataloader):.0f}%)]"
+        #         f'\tLoss: {out_criterion["loss"].item():.3f} |'
+        #         f'\tMSE loss: {out_criterion["mse_loss"].item():.3f} |'
+        #         f'\tpsnr: {out_criterion["psnr"]:.2f} |'
+        #         f'\tBpp loss: {out_criterion["bpp_loss"].item():.2f} |'
+        #         #f"\tAux loss: {aux_loss.item():.2f}"
+        #     )
+
+        train_iter.set_description(
+            f"Train epoch {epoch}: ["
+            f"{i*len(d)}/{len(train_dataloader.dataset)}"
+            f" ({100. * i / len(train_dataloader):.0f}%)]"
+            f'\tLoss: {out_criterion["loss"].item():.3f} |'
+            f'\tMSE loss: {out_criterion["mse_loss"].item():.3f} |'
+            f'\tpsnr: {out_criterion["psnr"]:.2f} |'
+            f'\tBpp loss: {out_criterion["bpp_loss"].item():.2f} |'
+            #f"\tAux loss: {aux_loss.item():.2f}"
+        )
 
 
 def test_epoch(epoch, test_dataloader, model, criterion):
@@ -127,6 +140,7 @@ def test_epoch(epoch, test_dataloader, model, criterion):
     bpp_loss = AverageMeter()
     mse_loss = AverageMeter()
     aux_loss = AverageMeter()
+    psnr = AverageMeter()
 
     with torch.no_grad():
         for d in test_dataloader:
