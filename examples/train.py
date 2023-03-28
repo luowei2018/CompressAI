@@ -38,7 +38,6 @@ import torch.optim as optim
 
 from torch.utils.data import DataLoader
 from torchvision import transforms
-import torchvision.transforms as T
 
 from compressai.datasets import ImageFolder
 from compressai.losses import RateDistortionLoss
@@ -114,8 +113,9 @@ def train_one_epoch(
                 f" ({100. * i / len(train_dataloader):.0f}%)]"
                 f'\tLoss: {out_criterion["loss"].item():.3f} |'
                 f'\tMSE loss: {out_criterion["mse_loss"].item():.3f} |'
+                f'\tpsnr: {out_criterion["psnr"]:.2f} |'
                 f'\tBpp loss: {out_criterion["bpp_loss"].item():.2f} |'
-                f"\tAux loss: {aux_loss.item():.2f}"
+                #f"\tAux loss: {aux_loss.item():.2f}"
             )
 
 
@@ -138,22 +138,24 @@ def test_epoch(epoch, test_dataloader, model, criterion):
             bpp_loss.update(out_criterion["bpp_loss"])
             loss.update(out_criterion["loss"])
             mse_loss.update(out_criterion["mse_loss"])
+            psnr.update(out_criterion["psnr"])
 
     print(
         f"Test epoch {epoch}: Average losses:"
         f"\tLoss: {loss.avg:.3f} |"
-        f"\tMSE loss: {mse_loss.avg:.3f} |"
+        f"\tPSNR loss: {psnr.avg:.2f} |"
         f"\tBpp loss: {bpp_loss.avg:.2f} |"
-        f"\tAux loss: {aux_loss.avg:.2f}\n"
+        f"\tMSE loss: {mse_loss.avg:.4f} |"
+        #f"\tAux loss: {aux_loss.avg:.2f}\n"
     )
 
     return loss.avg
 
 
-def save_checkpoint(state, is_best, filename="checkpoint.pth.tar"):
+def save_checkpoint(state, is_best, filename="FactorizedPrior_checkpoint.pth.tar"):
     torch.save(state, filename)
     if is_best:
-        shutil.copyfile(filename, "checkpoint_best_loss.pth.tar")
+        shutil.copyfile(filename, "FactorizedPrior_checkpoint_best_loss.pth.tar")
 
 
 def parse_args(argv):
@@ -171,7 +173,7 @@ def parse_args(argv):
     parser.add_argument(
         "-e",
         "--epochs",
-        default=100,
+        default=150,
         type=int,
         help="Number of epochs (default: %(default)s)",
     )
@@ -202,7 +204,7 @@ def parse_args(argv):
     parser.add_argument(
         "--test-batch-size",
         type=int,
-        default=64,
+        default=1,
         help="Test batch size (default: %(default)s)",
     )
     parser.add_argument(
@@ -241,26 +243,27 @@ def main(argv):
         torch.manual_seed(args.seed)
         random.seed(args.seed)
 
+    # train_transforms = transforms.Compose(
+    #     [transforms.RandomCrop(args.patch_size), transforms.ToTensor()]
+    # )
     train_transforms = transforms.Compose(
-        [transforms.RandomCrop(args.patch_size), transforms.ToTensor()]
+        [transforms.RandomResizedCrop(size=256, scale=(1.0, 1.0)), transforms.ToTensor()]
     )
 
-    test_transforms = transforms.Compose(
-        [transforms.CenterCrop(args.patch_size), transforms.ToTensor()]
-    )
-    transform = T.Compose([
-        T.Resize(args.patch_size),
-        T.ToTensor(),
-        T.Normalize(mean=[0.485, 0.456, 0.406],
-                    std=[0.229, 0.224, 0.225])])
-                    
-    dataset = ImageFolder("/home/weiluo6/CompressAI/compressai/datasets/" + args.dataset, transform=transform)
-    train_size = int(0.6*len(dataset))
-    test_size = len(dataset) - train_size
-    train_dataset, test_dataset = torch.utils.data.random_split(dataset, [train_size, test_size])
+    # test_transforms = transforms.Compose(
+    #     [transforms.CenterCrop(args.patch_size), transforms.ToTensor()]
+    # )
+    test_transforms = transforms.ToTensor()
 
-    #train_dataset = ImageFolder(args.dataset, split="train", transform=train_transforms)
+    # transform = T.Compose([
+    #     T.Resize(args.patch_size),
+    #     T.ToTensor(),
+    #     T.Normalize(mean=[0.485, 0.456, 0.406],
+    #                 std=[0.229, 0.224, 0.225])])
+
+    train_dataset = ImageFolder("/home/weiluo6/CompressAI/compressai/datasets/" + args.dataset, transform=train_transforms)
     #test_dataset = ImageFolder(args.dataset, split="test", transform=test_transforms)
+    test_dataset = ImageFolder("/home/weiluo6/CompressAI/compressai/datasets/Kodak-Lossless-True-Color-Image-Suite/PhotoCD_PCD0992", transform=test_transforms)
 
     device = "cuda" if args.cuda and torch.cuda.is_available() else "cpu"
 
