@@ -69,6 +69,7 @@ class RateDistortionLoss(nn.Module):
             distortion = 255**2 * out["mse_loss"]
 
         out["loss"] = self.lmbda * distortion + out["bpp_loss"]
+        out["psnr"] = 10 * math.log10(1 / (out["mse_loss"]))
         if self.return_type == "all":
             return out
         else:

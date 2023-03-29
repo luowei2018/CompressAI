@@ -89,7 +89,7 @@ def train_one_epoch(
     model.train()
     device = next(model.parameters()).device
 
-    train_iter = tqdm(train_dataloader, desc=f"Train Epoch {epoch}")
+    train_iter = tqdm(train_dataloader)
     for i, d in enumerate(train_iter):
         d = d.to(device)
 
@@ -121,13 +121,13 @@ def train_one_epoch(
         #     )
 
         train_iter.set_description(
-            f"Train epoch {epoch}: ["
+            f"epoch {epoch}: ["
             f"{i*len(d)}/{len(train_dataloader.dataset)}"
             f" ({100. * i / len(train_dataloader):.0f}%)]"
-            f'\tLoss: {out_criterion["loss"].item():.3f} |'
-            f'\tMSE loss: {out_criterion["mse_loss"].item():.3f} |'
-            f'\tpsnr: {out_criterion["psnr"]:.2f} |'
-            f'\tBpp loss: {out_criterion["bpp_loss"].item():.2f} |'
+            f'L: {out_criterion["loss"].item():.3f} |'
+            f'M: {out_criterion["mse_loss"].item():.3f} |'
+            f'P: {out_criterion["psnr"]:.2f} |'
+            f'B: {out_criterion["bpp_loss"].item():.2f} |'
             #f"\tAux loss: {aux_loss.item():.2f}"
         )
 
@@ -157,7 +157,7 @@ def test_epoch(epoch, test_dataloader, model, criterion):
     print(
         f"Test epoch {epoch}: Average losses:"
         f"\tLoss: {loss.avg:.3f} |"
-        f"\tPSNR loss: {psnr.avg:.2f} |"
+        f"\tPSNR: {psnr.avg:.2f} |"
         f"\tBpp loss: {bpp_loss.avg:.2f} |"
         f"\tMSE loss: {mse_loss.avg:.4f} |"
         #f"\tAux loss: {aux_loss.avg:.2f}\n"
@@ -166,10 +166,10 @@ def test_epoch(epoch, test_dataloader, model, criterion):
     return loss.avg
 
 
-def save_checkpoint(state, is_best, filename="FactorizedPrior_checkpoint.pth.tar"):
+def save_checkpoint(state, is_best, filename="test_FactorizedPrior_checkpoint.pth.tar"):
     torch.save(state, filename)
     if is_best:
-        shutil.copyfile(filename, "FactorizedPrior_checkpoint_best_loss.pth.tar")
+        shutil.copyfile(filename, "test_FactorizedPrior_checkpoint_best_loss.pth.tar")
 
 
 def parse_args(argv):
