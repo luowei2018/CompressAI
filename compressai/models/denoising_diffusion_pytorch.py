@@ -11,21 +11,16 @@ from torch import nn, einsum
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
 
+from einops import rearrange, reduce, repeat
+from einops.layers.torch import Rearrange
+
 from torch.optim import Adam
 
 from torchvision import transforms as T, utils
 
-from einops import rearrange, reduce, repeat
-from einops.layers.torch import Rearrange
 
 from PIL import Image
 from tqdm.auto import tqdm
-from ema_pytorch import EMA
-
-from accelerate import Accelerator
-
-from pytorch_fid.inception import InceptionV3
-from pytorch_fid.fid_score import calculate_frechet_distance
 
 # helpers functions
 
@@ -210,9 +205,9 @@ class Attention(nn.Module):
 class Unet(nn.Module):
     def __init__(
         self,
-        dim = 64,
         input_channels = 192,
         output_channels = 192,
+        dim = 64,
         resnet_block_groups = 8
     ):
         super().__init__()

@@ -38,6 +38,8 @@ from compressai.entropy_models import EntropyBottleneck, GaussianConditional
 from compressai.layers import GDN, MaskedConv2d
 from compressai.registry import register_model
 
+from .denoising_diffusion_pytorch import Unet
+
 from .base import (
     SCALES_LEVELS,
     SCALES_MAX,
@@ -102,6 +104,7 @@ class FactorizedPrior(CompressionModel):
         super().__init__(**kwargs)
 
         self.entropy_bottleneck = EntropyBottleneck(M)
+        self.y_predictor = Unet(M, M)
 
         self.g_a = nn.Sequential(
             conv(3, N),
@@ -133,6 +136,11 @@ class FactorizedPrior(CompressionModel):
     def forward(self, x):
         y = self.g_a(x)
         y_hat, y_likelihoods = self.entropy_bottleneck(y)
+        y_round = torch.round(y)
+        y_predict = self.y_predictor(y_round) + y_round
+        y_err = y_predict - y.detach()
+        q_err = y - y_round
+        y_hat = y + y_err
         x_hat = self.g_s(y_hat)
 
         return {
@@ -140,6 +148,8 @@ class FactorizedPrior(CompressionModel):
             "likelihoods": {
                 "y": y_likelihoods,
             },
+            "y_err": y_err,
+            "q_err": q_err,
         }
 
     @classmethod

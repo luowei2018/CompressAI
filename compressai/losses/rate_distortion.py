@@ -70,6 +70,8 @@ class RateDistortionLoss(nn.Module):
 
         out["loss"] = self.lmbda * distortion + out["bpp_loss"]
         out["psnr"] = 10 * math.log10(1 / (out["mse_loss"]))
+        out["y_err"] = output["y_err"].abs().mean()
+        out["q_err"] = output["q_err"].abs().mean()
         if self.return_type == "all":
             return out
         else:

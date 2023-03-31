@@ -108,18 +108,6 @@ def train_one_epoch(
         aux_loss.backward()
         aux_optimizer.step()
 
-        # if i % 10 == 0:
-        #     print(
-        #         f"Train epoch {epoch}: ["
-        #         f"{i*len(d)}/{len(train_dataloader.dataset)}"
-        #         f" ({100. * i / len(train_dataloader):.0f}%)]"
-        #         f'\tLoss: {out_criterion["loss"].item():.3f} |'
-        #         f'\tMSE loss: {out_criterion["mse_loss"].item():.3f} |'
-        #         f'\tpsnr: {out_criterion["psnr"]:.2f} |'
-        #         f'\tBpp loss: {out_criterion["bpp_loss"].item():.2f} |'
-        #         #f"\tAux loss: {aux_loss.item():.2f}"
-        #     )
-
         train_iter.set_description(
             f"epoch {epoch}: ["
             f"{i*len(d)}/{len(train_dataloader.dataset)}"
@@ -128,7 +116,8 @@ def train_one_epoch(
             f'M: {out_criterion["mse_loss"].item():.3f} |'
             f'P: {out_criterion["psnr"]:.2f} |'
             f'B: {out_criterion["bpp_loss"].item():.2f} |'
-            #f"\tAux loss: {aux_loss.item():.2f}"
+            f'y_err: {out_criterion["y_err"].item():.3f} |'
+            f'q_err: {out_criterion["q_err"].item():.3f} |'
         )
 
 
@@ -141,6 +130,8 @@ def test_epoch(epoch, test_dataloader, model, criterion):
     mse_loss = AverageMeter()
     aux_loss = AverageMeter()
     psnr = AverageMeter()
+    y_err = AverageMeter()
+    q_err = AverageMeter()
 
     with torch.no_grad():
         for d in test_dataloader:
@@ -153,6 +144,8 @@ def test_epoch(epoch, test_dataloader, model, criterion):
             loss.update(out_criterion["loss"])
             mse_loss.update(out_criterion["mse_loss"])
             psnr.update(out_criterion["psnr"])
+            y_err.update(out_criterion["y_err"])
+            q_err.update(out_criterion["q_err"])
 
     print(
         f"Test epoch {epoch}: Average losses:"
@@ -160,16 +153,17 @@ def test_epoch(epoch, test_dataloader, model, criterion):
         f"\tPSNR: {psnr.avg:.2f} |"
         f"\tBpp loss: {bpp_loss.avg:.2f} |"
         f"\tMSE loss: {mse_loss.avg:.4f} |"
-        #f"\tAux loss: {aux_loss.avg:.2f}\n"
+        f'\ty_err: {y_err.avg:.3f} |'
+        f'\tq_err: {q_err.avg:.3f} |'
     )
 
     return loss.avg
 
 
-def save_checkpoint(state, is_best, filename="FactorizedPrior_checkpoint.pth.tar"):
+def save_checkpoint(state, is_best, filename="FactorizedPrior_Diffusion_checkpoint.pth.tar"):
     torch.save(state, filename)
     if is_best:
-        shutil.copyfile(filename, "FactorizedPrior_checkpoint_best_loss.pth.tar")
+        shutil.copyfile(filename, "FactorizedPrior_Diffusion_checkpoint_best_loss.pth.tar")
 
 
 def parse_args(argv):
@@ -187,7 +181,7 @@ def parse_args(argv):
     parser.add_argument(
         "-e",
         "--epochs",
-        default=150,
+        default=1000,
         type=int,
         help="Number of epochs (default: %(default)s)",
     )
