@@ -166,10 +166,10 @@ def test_epoch(epoch, test_dataloader, model, criterion):
     return loss.avg
 
 
-def save_checkpoint(state, is_best, filename="test_FactorizedPrior_checkpoint.pth.tar"):
+def save_checkpoint(state, is_best, filename="FactorizedPrior_checkpoint.pth.tar"):
     torch.save(state, filename)
     if is_best:
-        shutil.copyfile(filename, "test_FactorizedPrior_checkpoint_best_loss.pth.tar")
+        shutil.copyfile(filename, "FactorizedPrior_checkpoint_best_loss.pth.tar")
 
 
 def parse_args(argv):
