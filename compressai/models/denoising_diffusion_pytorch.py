@@ -226,7 +226,7 @@ class Unet(nn.Module):
         self.mid_attn = Residual(PreNorm(mid_dim, Attention(mid_dim)))
         self.mid_block2 = block_klass(mid_dim, mid_dim)
 
-        self.final_res_block = block_klass(mid_dim, dim)
+        self.final_res_block = block_klass(2 * mid_dim, dim)
         self.final_conv = nn.Conv2d(dim, output_channels, 1)
 
     def forward(self, x):
@@ -236,6 +236,7 @@ class Unet(nn.Module):
         x = self.mid_block1(x)
         x = self.mid_attn(x)
         x = self.mid_block2(x)
+        x = torch.cat((x, r), dim = 1)
 
         x = self.final_res_block(x)
         return self.final_conv(x)

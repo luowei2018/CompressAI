@@ -140,6 +140,7 @@ class FactorizedPrior(CompressionModel):
         y_predict = self.y_predictor(y_round) + y_round
         y_err = y_predict - y.detach()
         q_err = y - y_round
+        #y_hat = y + y_err.detach()
         y_hat = y + y_err
         x_hat = self.g_s(y_hat)
 
