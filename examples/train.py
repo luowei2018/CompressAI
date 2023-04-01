@@ -90,6 +90,14 @@ def train_one_epoch(
     device = next(model.parameters()).device
 
     train_iter = tqdm(train_dataloader)
+
+    loss_meter = AverageMeter()
+    mse_loss_meter = AverageMeter()
+    psnr_meter = AverageMeter()
+    bpp_loss_meter = AverageMeter()
+    y_err_meter = AverageMeter()
+    q_err_meter = AverageMeter()
+
     for i, d in enumerate(train_iter):
         d = d.to(device)
 
@@ -108,16 +116,23 @@ def train_one_epoch(
         aux_loss.backward()
         aux_optimizer.step()
 
+        loss_meter.update(out_criterion["loss"].item())
+        mse_loss_meter.update(out_criterion["mse_loss"].item())
+        psnr_meter.update(out_criterion["psnr"])
+        bpp_loss_meter.update(out_criterion["bpp_loss"].item())
+        y_err_meter.update(out_criterion["y_err"].item())
+        q_err_meter.update(out_criterion["q_err"].item())
+
         train_iter.set_description(
             f"epoch {epoch}: ["
             f"{i*len(d)}/{len(train_dataloader.dataset)}"
             f" ({100. * i / len(train_dataloader):.0f}%)]"
-            f'L: {out_criterion["loss"].item():.3f} |'
-            f'M: {out_criterion["mse_loss"].item():.3f} |'
-            f'P: {out_criterion["psnr"]:.2f} |'
-            f'B: {out_criterion["bpp_loss"].item():.2f} |'
-            f'y_err: {out_criterion["y_err"].item():.3f} |'
-            f'q_err: {out_criterion["q_err"].item():.3f} |'
+            f'L: {out_criterion["loss"].item():.3f} ({loss_meter.avg:.3f})|'
+            f'M: {out_criterion["mse_loss"].item():.3f} ({mse_loss_meter.avg:.3f})|'
+            f'P: {out_criterion["psnr"]:.2f} ({psnr_meter.avg:.2f})|'
+            f'B: {out_criterion["bpp_loss"].item():.2f} ({bpp_loss_meter.avg:.2f})|'
+            f'y_err: {out_criterion["y_err"].item():.3f} ({y_err_meter.avg:.3f})|'
+            f'q_err: {out_criterion["q_err"].item():.3f} ({q_err_meter.avg:.3f})|'
         )
 
 
