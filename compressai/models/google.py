@@ -139,9 +139,10 @@ class FactorizedPrior(CompressionModel):
         y_round = torch.round(y)
         y_predict = self.y_predictor(y_round) + y_round
         y_err = y_predict - y.detach()
+        y_err_loss = F.smooth_l1_loss(y_predict, y_err, reduction='sum') * 0.01
         q_err = y - y_round
-        #y_hat = y + y_err.detach()
-        y_hat = y + y_err
+        y_hat = y + y_err.detach()
+        #y_hat = y + y_err
         x_hat = self.g_s(y_hat)
 
         return {
@@ -151,9 +152,22 @@ class FactorizedPrior(CompressionModel):
             },
             "y_err": y_err,
             "q_err": q_err,
+            "y_err_loss": y_err_loss,
         }
 
     @classmethod
+    #Use this if load pretrained model checkpoints
+    def load_state_dict_whatever(cls, state_dict):
+        N = state_dict["g_a.0.weight"].size(0)
+        M = state_dict["g_a.6.weight"].size(0)
+        net = cls(N, M)
+        own_state = net.state_dict()
+        for name, param in state_dict.items():
+            if name.endswith("._offset") or name.endswith("._quantized_cdf") or name.endswith("._cdf_length") or name.endswith(".scale_table"):
+                continue
+            if name in own_state and own_state[name].size() == param.size():
+                own_state[name].copy_(param)
+
     def from_state_dict(cls, state_dict):
         """Return a new model instance from `state_dict`."""
         N = state_dict["g_a.0.weight"].size(0)

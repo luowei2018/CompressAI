@@ -71,7 +71,7 @@ class CustomDataParallel(nn.DataParallel):
         except AttributeError:
             return getattr(self.module, key)
 
-
+# seperate encoder and decoder
 def configure_optimizers(net, args):
     """Separate parameters for the main optimizer and the auxiliary optimizer.
     Return two optimizers"""
@@ -112,11 +112,11 @@ def train_one_epoch(
             torch.nn.utils.clip_grad_norm_(model.parameters(), clip_max_norm)
         optimizer.step()
 
-        aux_loss = model.aux_loss()
-        aux_loss.backward()
-        aux_optimizer.step()
+        # aux_loss = model.aux_loss()
+        # aux_loss.backward()
+        # aux_optimizer.step()
 
-        loss_meter.update(out_criterion["loss"].item())
+        loss_meter.update(((0.01 * 255**2 * out_criterion["mse_loss"] + out_criterion["bpp_loss"])).item())
         mse_loss_meter.update(out_criterion["mse_loss"].item())
         psnr_meter.update(out_criterion["psnr"])
         bpp_loss_meter.update(out_criterion["bpp_loss"].item())
@@ -127,10 +127,10 @@ def train_one_epoch(
             f"epoch {epoch}: ["
             f"{i*len(d)}/{len(train_dataloader.dataset)}"
             f" ({100. * i / len(train_dataloader):.0f}%)]"
-            f'L: {out_criterion["loss"].item():.3f} ({loss_meter.avg:.3f})|'
-            f'M: {out_criterion["mse_loss"].item():.3f} ({mse_loss_meter.avg:.3f})|'
+            f'L: {(0.01 * 255**2 * out_criterion["mse_loss"] + out_criterion["bpp_loss"]).item():.3f} ({loss_meter.avg:.3f})|'
+            f'M: {out_criterion["mse_loss"].item():.4f} ({mse_loss_meter.avg:.4f})|'
             f'P: {out_criterion["psnr"]:.2f} ({psnr_meter.avg:.2f})|'
-            f'B: {out_criterion["bpp_loss"].item():.2f} ({bpp_loss_meter.avg:.2f})|'
+            f'B: {out_criterion["bpp_loss"].item():.3f} ({bpp_loss_meter.avg:.3f})|'
             f'y_err: {out_criterion["y_err"].item():.3f} ({y_err_meter.avg:.3f})|'
             f'q_err: {out_criterion["q_err"].item():.3f} ({q_err_meter.avg:.3f})|'
         )
@@ -156,7 +156,7 @@ def test_epoch(epoch, test_dataloader, model, criterion):
 
             aux_loss.update(model.aux_loss())
             bpp_loss.update(out_criterion["bpp_loss"])
-            loss.update(out_criterion["loss"])
+            loss.update((0.01 * 255**2 * out_criterion["mse_loss"] + out_criterion["bpp_loss"]))
             mse_loss.update(out_criterion["mse_loss"])
             psnr.update(out_criterion["psnr"])
             y_err.update(out_criterion["y_err"])
@@ -166,7 +166,7 @@ def test_epoch(epoch, test_dataloader, model, criterion):
         f"Test epoch {epoch}: Average losses:"
         f"\tLoss: {loss.avg:.3f} |"
         f"\tPSNR: {psnr.avg:.2f} |"
-        f"\tBpp loss: {bpp_loss.avg:.2f} |"
+        f"\tBpp loss: {bpp_loss.avg:.3f} |"
         f"\tMSE loss: {mse_loss.avg:.4f} |"
         f'\ty_err: {y_err.avg:.3f} |'
         f'\tq_err: {q_err.avg:.3f} |'
@@ -175,10 +175,10 @@ def test_epoch(epoch, test_dataloader, model, criterion):
     return loss.avg
 
 
-def save_checkpoint(state, is_best, filename="FactorizedPrior_PM_checkpoint.pth.tar"):
+def save_checkpoint(state, is_best, filename="FactorizedPrior_SmoothL1Loss_EncoderdetachedOP_checkpoint.pth.tar"):
     torch.save(state, filename)
     if is_best:
-        shutil.copyfile(filename, "FactorizedPrior_PM_checkpoint_best_loss.pth.tar")
+        shutil.copyfile(filename, "FactorizedPrior_SmoothL1Loss_EncoderdetachedOP_checkpoint_best_loss.pth.tar")
 
 
 def parse_args(argv):
@@ -322,9 +322,9 @@ def main(argv):
         checkpoint = torch.load(args.checkpoint, map_location=device)
         last_epoch = checkpoint["epoch"] + 1
         net.load_state_dict(checkpoint["state_dict"])
-        optimizer.load_state_dict(checkpoint["optimizer"])
-        aux_optimizer.load_state_dict(checkpoint["aux_optimizer"])
-        lr_scheduler.load_state_dict(checkpoint["lr_scheduler"])
+        #optimizer.load_state_dict(checkpoint["optimizer"])
+        #aux_optimizer.load_state_dict(checkpoint["aux_optimizer"])
+        #lr_scheduler.load_state_dict(checkpoint["lr_scheduler"])
 
     best_loss = float("inf")
     for epoch in range(last_epoch, args.epochs):

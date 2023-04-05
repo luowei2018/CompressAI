@@ -67,9 +67,10 @@ class RateDistortionLoss(nn.Module):
         else:
             out["mse_loss"] = self.metric(output["x_hat"], target)
             distortion = 255**2 * out["mse_loss"]
+            #distortion = 2048 * out["mse_loss"]
 
-        out["loss"] = self.lmbda * distortion + out["bpp_loss"] + torch.norm(output["y_err"], 2) * 0.001
-        #out["loss"] = self.lmbda * distortion + out["bpp_loss"] + output["y_err"].pow(2).mean()
+        #out["loss"] = 2048 * out["mse_loss"] + out["bpp_loss"] + output["y_err_loss"] * 0.01
+        out["loss"] = self.lmbda * distortion + out["bpp_loss"] + output["y_err"].pow(2).mean()
         out["psnr"] = 10 * math.log10(1 / (out["mse_loss"]))
         #out["y_err"] = output["y_err"].pow(2).mean()
         #out["q_err"] = output["q_err"].pow(2).mean()
