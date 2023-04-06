@@ -71,7 +71,6 @@ class CustomDataParallel(nn.DataParallel):
         except AttributeError:
             return getattr(self.module, key)
 
-# seperate encoder and decoder
 def configure_optimizers(net, args):
     """Separate parameters for the main optimizer and the auxiliary optimizer.
     Return two optimizers"""
@@ -84,7 +83,8 @@ def configure_optimizers(net, args):
 
 
 def train_one_epoch(
-    model, criterion, train_dataloader, optimizer, aux_optimizer, epoch, clip_max_norm
+    model, criterion, train_dataloader, optimizer, #aux_optimizer,#
+    epoch, clip_max_norm
 ):
     model.train()
     device = next(model.parameters()).device
@@ -98,11 +98,17 @@ def train_one_epoch(
     y_err_meter = AverageMeter()
     q_err_meter = AverageMeter()
 
+    # Fix encoder parameters
+    for param in model.g_a.parameters():
+        param.requires_grad = False
+    for param in model.entropy_bottleneck.parameters():
+        param.requires_grad = False
+
     for i, d in enumerate(train_iter):
         d = d.to(device)
 
         optimizer.zero_grad()
-        aux_optimizer.zero_grad()
+        #aux_optimizer.zero_grad()
 
         out_net = model(d)
 
@@ -134,6 +140,12 @@ def train_one_epoch(
             f'y_err: {out_criterion["y_err"].item():.3f} ({y_err_meter.avg:.3f})|'
             f'q_err: {out_criterion["q_err"].item():.3f} ({q_err_meter.avg:.3f})|'
         )
+    
+    # Restore the encoder's trainable status
+    for param in model.g_a.parameters():
+        param.requires_grad = True
+    for param in model.entropy_bottleneck.parameters():
+        param.requires_grad = True
 
 
 def test_epoch(epoch, test_dataloader, model, criterion):
@@ -175,10 +187,10 @@ def test_epoch(epoch, test_dataloader, model, criterion):
     return loss.avg
 
 
-def save_checkpoint(state, is_best, filename="FactorizedPrior_SmoothL1Loss_EncoderdetachedOP_checkpoint.pth.tar"):
+def save_checkpoint(state, is_best, filename="FactorizedPrior_L1Loss_Encoderdetached_checkpoint.pth.tar"):
     torch.save(state, filename)
     if is_best:
-        shutil.copyfile(filename, "FactorizedPrior_SmoothL1Loss_EncoderdetachedOP_checkpoint_best_loss.pth.tar")
+        shutil.copyfile(filename, "FactorizedPrior_L1Loss_Encoderdetached_checkpoint_best_loss.pth.tar")
 
 
 def parse_args(argv):
@@ -312,7 +324,9 @@ def main(argv):
     # if args.cuda and torch.cuda.device_count() > 1:
     #     net = CustomDataParallel(net)
 
-    optimizer, aux_optimizer = configure_optimizers(net, args)
+    #optimizer, aux_optimizer = configure_optimizers(net, args)
+    parameters = net.optim_parameters()
+    optimizer = torch.optim.Adam([{'params': parameters}], lr=0.0001, weight_decay=0.0005)
     lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, "min")
     criterion = RateDistortionLoss(lmbda=args.lmbda)
 
@@ -321,7 +335,7 @@ def main(argv):
         print("Loading", args.checkpoint)
         checkpoint = torch.load(args.checkpoint, map_location=device)
         last_epoch = checkpoint["epoch"] + 1
-        net.load_state_dict(checkpoint["state_dict"])
+        net.load_state_dict_whatever(checkpoint["state_dict"])
         #optimizer.load_state_dict(checkpoint["optimizer"])
         #aux_optimizer.load_state_dict(checkpoint["aux_optimizer"])
         #lr_scheduler.load_state_dict(checkpoint["lr_scheduler"])
@@ -334,7 +348,7 @@ def main(argv):
             criterion,
             train_dataloader,
             optimizer,
-            aux_optimizer,
+            #aux_optimizer,
             epoch,
             args.clip_max_norm,
         )
@@ -351,7 +365,7 @@ def main(argv):
                     "state_dict": net.state_dict(),
                     "loss": loss,
                     "optimizer": optimizer.state_dict(),
-                    "aux_optimizer": aux_optimizer.state_dict(),
+                    #"aux_optimizer": aux_optimizer.state_dict(),
                     "lr_scheduler": lr_scheduler.state_dict(),
                 },
                 is_best,

@@ -139,7 +139,7 @@ class FactorizedPrior(CompressionModel):
         y_round = torch.round(y)
         y_predict = self.y_predictor(y_round) + y_round
         y_err = y_predict - y.detach()
-        y_err_loss = F.smooth_l1_loss(y_predict, y_err, reduction='sum') * 0.01
+        y_err_loss = torch.norm(y_err, 1) * 0.00001
         q_err = y - y_round
         y_hat = y + y_err.detach()
         #y_hat = y + y_err
@@ -156,18 +156,6 @@ class FactorizedPrior(CompressionModel):
         }
 
     @classmethod
-    #Use this if load pretrained model checkpoints
-    def load_state_dict_whatever(cls, state_dict):
-        N = state_dict["g_a.0.weight"].size(0)
-        M = state_dict["g_a.6.weight"].size(0)
-        net = cls(N, M)
-        own_state = net.state_dict()
-        for name, param in state_dict.items():
-            if name.endswith("._offset") or name.endswith("._quantized_cdf") or name.endswith("._cdf_length") or name.endswith(".scale_table"):
-                continue
-            if name in own_state and own_state[name].size() == param.size():
-                own_state[name].copy_(param)
-
     def from_state_dict(cls, state_dict):
         """Return a new model instance from `state_dict`."""
         N = state_dict["g_a.0.weight"].size(0)
@@ -175,6 +163,15 @@ class FactorizedPrior(CompressionModel):
         net = cls(N, M)
         net.load_state_dict(state_dict)
         return net
+    
+    #Use this if load pretrained model checkpoints
+    def load_state_dict_whatever(self, state_dict):
+        own_state = self.state_dict()
+        for name, param in state_dict.items():
+            if name.endswith("._offset") or name.endswith("._quantized_cdf") or name.endswith("._cdf_length") or name.endswith(".scale_table"):
+                continue
+            if name in own_state and own_state[name].size() == param.size():
+                own_state[name].copy_(param)
 
     def compress(self, x):
         y = self.g_a(x)
@@ -186,6 +183,12 @@ class FactorizedPrior(CompressionModel):
         y_hat = self.entropy_bottleneck.decompress(strings[0], shape)
         x_hat = self.g_s(y_hat).clamp_(0, 1)
         return {"x_hat": x_hat}
+
+    def optim_parameters(self):
+        parameters = []
+        parameters += self.g_s.parameters()
+        parameters += self.y_predictor.parameters()
+        return parameters
 
 
 @register_model("bmshj2018-factorized-relu")
