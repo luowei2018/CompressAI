@@ -208,7 +208,8 @@ class Unet(nn.Module):
         input_channels = 192,
         output_channels = 192,
         dim = 64,
-        resnet_block_groups = 8
+        resnet_block_groups = 8,
+        dropout_prob = 0.5
     ):
         super().__init__()
 
@@ -223,10 +224,15 @@ class Unet(nn.Module):
 
         mid_dim = 8 * dim
         self.mid_block1 = block_klass(mid_dim, mid_dim)
-        self.mid_attn = Residual(PreNorm(mid_dim, Attention(mid_dim)))
+        self.mid_attn1 = Residual(PreNorm(mid_dim, Attention(mid_dim)))
+        #self.dropout1 = nn.Dropout2d(dropout_prob)
         self.mid_block2 = block_klass(mid_dim, mid_dim)
+        self.mid_attn2 = Residual(PreNorm(mid_dim, Attention(mid_dim)))
+        #self.dropout2 = nn.Dropout2d(dropout_prob)
+        self.mid_block3 = block_klass(mid_dim, mid_dim)
 
         self.final_res_block = block_klass(2 * mid_dim, dim)
+        #self.dropout3 = nn.Dropout2d(dropout_prob)
         self.final_conv = nn.Conv2d(dim, output_channels, 1)
 
     def forward(self, x):
@@ -234,9 +240,14 @@ class Unet(nn.Module):
         r = x.clone()
 
         x = self.mid_block1(x)
-        x = self.mid_attn(x)
+        x = self.mid_attn1(x)
+        #x = self.dropout1(x)
         x = self.mid_block2(x)
+        x = self.mid_attn2(x)
+        #x = self.dropout2(x)
+        x = self.mid_block3(x)
         x = torch.cat((x, r), dim = 1)
 
         x = self.final_res_block(x)
+        #x = self.dropout3(x)
         return self.final_conv(x)

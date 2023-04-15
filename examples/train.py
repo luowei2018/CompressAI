@@ -95,14 +95,14 @@ def train_one_epoch(
     mse_loss_meter = AverageMeter()
     psnr_meter = AverageMeter()
     bpp_loss_meter = AverageMeter()
-    y_err_meter = AverageMeter()
-    q_err_meter = AverageMeter()
+    y_norm_meter = AverageMeter()
+    q_norm_meter = AverageMeter()
 
-    # Fix encoder parameters
-    for param in model.g_a.parameters():
-        param.requires_grad = False
-    for param in model.entropy_bottleneck.parameters():
-        param.requires_grad = False
+    # # Fix encoder parameters
+    # for param in model.g_a.parameters():
+    #     param.requires_grad = False
+    # for param in model.entropy_bottleneck.parameters():
+    #     param.requires_grad = False
 
     for i, d in enumerate(train_iter):
         d = d.to(device)
@@ -122,30 +122,30 @@ def train_one_epoch(
         # aux_loss.backward()
         # aux_optimizer.step()
 
-        loss_meter.update(((0.01 * 255**2 * out_criterion["mse_loss"] + out_criterion["bpp_loss"])).item())
+        loss_meter.update(out_criterion["loss"].item())
         mse_loss_meter.update(out_criterion["mse_loss"].item())
         psnr_meter.update(out_criterion["psnr"])
         bpp_loss_meter.update(out_criterion["bpp_loss"].item())
-        y_err_meter.update(out_criterion["y_err"].item())
-        q_err_meter.update(out_criterion["q_err"].item())
+        y_norm_meter.update(out_criterion["y_norm"].item())
+        q_norm_meter.update(out_criterion["q_norm"].item())
 
         train_iter.set_description(
             f"epoch {epoch}: ["
             f"{i*len(d)}/{len(train_dataloader.dataset)}"
             f" ({100. * i / len(train_dataloader):.0f}%)]"
-            f'L: {(0.01 * 255**2 * out_criterion["mse_loss"] + out_criterion["bpp_loss"]).item():.3f} ({loss_meter.avg:.3f})|'
+            f'L: {out_criterion["loss"].item():.3f} ({loss_meter.avg:.3f})|'
             f'M: {out_criterion["mse_loss"].item():.4f} ({mse_loss_meter.avg:.4f})|'
             f'P: {out_criterion["psnr"]:.2f} ({psnr_meter.avg:.2f})|'
             f'B: {out_criterion["bpp_loss"].item():.3f} ({bpp_loss_meter.avg:.3f})|'
-            f'y_err: {out_criterion["y_err"].item():.3f} ({y_err_meter.avg:.3f})|'
-            f'q_err: {out_criterion["q_err"].item():.3f} ({q_err_meter.avg:.3f})|'
+            f'y_norm: {out_criterion["y_norm"].item():.3f} ({y_norm_meter.avg:.3f})|'
+            f'q_norm: {out_criterion["q_norm"].item():.3f} ({q_norm_meter.avg:.3f})|'
         )
     
-    # Restore the encoder's trainable status
-    for param in model.g_a.parameters():
-        param.requires_grad = True
-    for param in model.entropy_bottleneck.parameters():
-        param.requires_grad = True
+    # # Restore the encoder's trainable status
+    # for param in model.g_a.parameters():
+    #     param.requires_grad = True
+    # for param in model.entropy_bottleneck.parameters():
+    #     param.requires_grad = True
 
 
 def test_epoch(epoch, test_dataloader, model, criterion):
@@ -157,8 +157,8 @@ def test_epoch(epoch, test_dataloader, model, criterion):
     mse_loss = AverageMeter()
     aux_loss = AverageMeter()
     psnr = AverageMeter()
-    y_err = AverageMeter()
-    q_err = AverageMeter()
+    y_norm = AverageMeter()
+    q_norm = AverageMeter()
 
     with torch.no_grad():
         for d in test_dataloader:
@@ -168,11 +168,11 @@ def test_epoch(epoch, test_dataloader, model, criterion):
 
             aux_loss.update(model.aux_loss())
             bpp_loss.update(out_criterion["bpp_loss"])
-            loss.update((0.01 * 255**2 * out_criterion["mse_loss"] + out_criterion["bpp_loss"]))
+            loss.update(out_criterion["loss"])
             mse_loss.update(out_criterion["mse_loss"])
             psnr.update(out_criterion["psnr"])
-            y_err.update(out_criterion["y_err"])
-            q_err.update(out_criterion["q_err"])
+            y_norm.update(out_criterion["y_norm"])
+            q_norm.update(out_criterion["q_norm"])
 
     print(
         f"Test epoch {epoch}: Average losses:"
@@ -180,17 +180,17 @@ def test_epoch(epoch, test_dataloader, model, criterion):
         f"\tPSNR: {psnr.avg:.2f} |"
         f"\tBpp loss: {bpp_loss.avg:.3f} |"
         f"\tMSE loss: {mse_loss.avg:.4f} |"
-        f'\ty_err: {y_err.avg:.3f} |'
-        f'\tq_err: {q_err.avg:.3f} |'
+        f'\ty_norm: {y_norm.avg:.3f} |'
+        f'\tq_norm: {q_norm.avg:.3f} |'
     )
 
     return loss.avg
 
 
-def save_checkpoint(state, is_best, filename="FactorizedPrior_L1Loss_Encoderdetached_checkpoint.pth.tar"):
+def save_checkpoint(state, is_best, filename="FactorizedPrior_L2NormXS1e-3_checkpoint.pth.tar"):
     torch.save(state, filename)
     if is_best:
-        shutil.copyfile(filename, "FactorizedPrior_L1Loss_Encoderdetached_checkpoint_best_loss.pth.tar")
+        shutil.copyfile(filename, "FactorizedPrior_L2NormXS1e-3_checkpoint_best_loss.pth.tar")
 
 
 def parse_args(argv):
@@ -215,7 +215,8 @@ def parse_args(argv):
     parser.add_argument(
         "-lr",
         "--learning-rate",
-        default=1e-4,
+        #default=1e-4,
+        default=1e-6,
         type=float,
         help="Learning rate (default: %(default)s)",
     )
@@ -230,7 +231,7 @@ def parse_args(argv):
         "--lambda",
         dest="lmbda",
         type=float,
-        default=1e-2,
+        default=1e-2, 
         help="Bit-rate distortion parameter (default: %(default)s)",
     )
     parser.add_argument(
@@ -326,7 +327,7 @@ def main(argv):
 
     #optimizer, aux_optimizer = configure_optimizers(net, args)
     parameters = net.optim_parameters()
-    optimizer = torch.optim.Adam([{'params': parameters}], lr=0.0001, weight_decay=0.0005)
+    optimizer = torch.optim.Adam([{'params': parameters}], lr=1e-6, weight_decay=5e-4)
     lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, "min")
     criterion = RateDistortionLoss(lmbda=args.lmbda)
 
@@ -336,9 +337,9 @@ def main(argv):
         checkpoint = torch.load(args.checkpoint, map_location=device)
         last_epoch = checkpoint["epoch"] + 1
         net.load_state_dict_whatever(checkpoint["state_dict"])
-        #optimizer.load_state_dict(checkpoint["optimizer"])
-        #aux_optimizer.load_state_dict(checkpoint["aux_optimizer"])
-        #lr_scheduler.load_state_dict(checkpoint["lr_scheduler"])
+        # optimizer.load_state_dict(checkpoint["optimizer"])
+        # aux_optimizer.load_state_dict(checkpoint["aux_optimizer"])
+        # lr_scheduler.load_state_dict(checkpoint["lr_scheduler"])
 
     best_loss = float("inf")
     for epoch in range(last_epoch, args.epochs):

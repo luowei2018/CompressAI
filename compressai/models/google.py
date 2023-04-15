@@ -37,6 +37,7 @@ from compressai.ans import BufferedRansEncoder, RansDecoder
 from compressai.entropy_models import EntropyBottleneck, GaussianConditional
 from compressai.layers import GDN, MaskedConv2d
 from compressai.registry import register_model
+from compressai.ops import quantize_ste
 
 from .denoising_diffusion_pytorch import Unet
 
@@ -61,7 +62,6 @@ __all__ = [
     "SCALES_MAX",
     "SCALES_LEVELS",
 ]
-
 
 @register_model("bmshj2018-factorized")
 class FactorizedPrior(CompressionModel):
@@ -139,10 +139,12 @@ class FactorizedPrior(CompressionModel):
         y_round = torch.round(y)
         y_predict = self.y_predictor(y_round) + y_round
         y_err = y_predict - y.detach()
-        y_err_loss = torch.norm(y_err, 1) * 0.00001
+        y_norm = torch.norm(y_err, 2)
+        #y_norm = torch.norm(y_err, 1)
         q_err = y - y_round
-        y_hat = y + y_err.detach()
-        #y_hat = y + y_err
+        q_norm = torch.norm(q_err, 2)
+        #q_norm = torch.norm(q_err, 1)
+        y_hat = y_predict.detach()
         x_hat = self.g_s(y_hat)
 
         return {
@@ -150,9 +152,8 @@ class FactorizedPrior(CompressionModel):
             "likelihoods": {
                 "y": y_likelihoods,
             },
-            "y_err": y_err,
-            "q_err": q_err,
-            "y_err_loss": y_err_loss,
+            "y_norm": y_norm,
+            "q_norm": q_norm,
         }
 
     @classmethod
@@ -402,6 +403,9 @@ class MeanScaleHyperprior(ScaleHyperprior):
     def __init__(self, N, M, **kwargs):
         super().__init__(N=N, M=M, **kwargs)
 
+        self.upsampler = nn.PixelShuffle(4)
+        self.y_predictor = Unet(M+8, M)
+
         self.h_a = nn.Sequential(
             conv(M, N, stride=1, kernel_size=3),
             nn.LeakyReLU(inplace=True),
@@ -421,15 +425,25 @@ class MeanScaleHyperprior(ScaleHyperprior):
     def forward(self, x):
         y = self.g_a(x)
         z = self.h_a(y)
+        y_round = torch.round(y)
+        z_round = torch.round(z)
+        side_info = self.upsampler(z_round)
+        all_info = torch.cat((y_round, side_info), dim=1)
+        y_predict = self.y_predictor(all_info) + y_round
+        y_err = -(F.cosine_similarity(y_predict, y.detach()).abs().mean())
+        q_err = -(F.cosine_similarity(y, y_round).abs().mean())
         z_hat, z_likelihoods = self.entropy_bottleneck(z)
         gaussian_params = self.h_s(z_hat)
         scales_hat, means_hat = gaussian_params.chunk(2, 1)
         y_hat, y_likelihoods = self.gaussian_conditional(y, scales_hat, means=means_hat)
+        y_hat = y_predict.detach()
         x_hat = self.g_s(y_hat)
 
         return {
             "x_hat": x_hat,
             "likelihoods": {"y": y_likelihoods, "z": z_likelihoods},
+            "y_err": y_err,
+            "q_err": q_err,
         }
 
     def compress(self, x):
@@ -456,6 +470,21 @@ class MeanScaleHyperprior(ScaleHyperprior):
         )
         x_hat = self.g_s(y_hat).clamp_(0, 1)
         return {"x_hat": x_hat}
+
+    def optim_parameters(self):
+        parameters = []
+        parameters += self.g_s.parameters()
+        parameters += self.y_predictor.parameters()
+        return parameters
+
+    #Use this if load pretrained model checkpoints
+    def load_state_dict_whatever(self, state_dict):
+        own_state = self.state_dict()
+        for name, param in state_dict.items():
+            if name.endswith("._offset") or name.endswith("._quantized_cdf") or name.endswith("._cdf_length") or name.endswith(".scale_table"):
+                continue
+            if name in own_state and own_state[name].size() == param.size():
+                own_state[name].copy_(param)
 
 
 @register_model("mbt2018")
