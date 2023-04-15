@@ -27,7 +27,7 @@
 # OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
 # ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from torch import Tensor
 
@@ -61,11 +61,13 @@ class EntropyBottleneckLatentCodec(LatentCodec):
 
     entropy_bottleneck: EntropyBottleneck
 
-    def __init__(self, N: int, **kwargs):
+    def __init__(
+        self,
+        entropy_bottleneck: Optional[EntropyBottleneck] = None,
+        **kwargs,
+    ):
         super().__init__()
-        self._kwargs = kwargs
-        self.N = N
-        self._setdefault("entropy_bottleneck", lambda: EntropyBottleneck(N))
+        self.entropy_bottleneck = entropy_bottleneck or EntropyBottleneck(**kwargs)
 
     def forward(self, y: Tensor) -> Dict[str, Any]:
         y_hat, y_likelihoods = self.entropy_bottleneck(y)

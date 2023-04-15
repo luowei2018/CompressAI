@@ -27,7 +27,7 @@
 # OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
 # ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-from typing import Any, Dict, List, Mapping, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 from torch import Tensor
 
@@ -44,8 +44,8 @@ __all__ = [
 
 @register_module("GainHyperpriorLatentCodec")
 class GainHyperpriorLatentCodec(LatentCodec):
-    """Hyperprior codec constructed from latent codec for `y` that
-    compresses `y` using `params` from `hyper` branch.
+    """Hyperprior codec constructed from latent codec for ``y`` that
+    compresses ``y`` using ``params`` from ``hyper`` branch.
 
     Gain-controlled hyperprior introduced in
     `"Asymmetric Gained Deep Image Compression With Continuous Rate Adaptation"
@@ -90,22 +90,24 @@ class GainHyperpriorLatentCodec(LatentCodec):
                             └───┘          GC
 
     Common configurations of latent codecs include:
-     - entropy bottleneck `hyper` (default) and gaussian conditional `y` (default)
-     - entropy bottleneck `hyper` (default) and autoregressive `y`
+     - entropy bottleneck ``hyper`` (default) and gaussian conditional ``y`` (default)
+     - entropy bottleneck ``hyper`` (default) and autoregressive ``y``
     """
 
     latent_codec: Mapping[str, LatentCodec]
 
-    def __init__(self, N: int, **kwargs):
+    def __init__(
+        self, latent_codec: Optional[Mapping[str, LatentCodec]] = None, **kwargs
+    ):
         super().__init__()
-        self._kwargs = kwargs
-        self.N = N
         self._set_group_defaults(
             "latent_codec",
+            latent_codec,
             defaults={
                 "y": GaussianConditionalLatentCodec,
-                "hyper": lambda: GainHyperLatentCodec(N),
+                "hyper": GainHyperLatentCodec,
             },
+            save_direct=True,
         )
 
     def forward(
