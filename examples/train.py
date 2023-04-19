@@ -95,7 +95,9 @@ def train_one_epoch(
     mse_loss_meter = AverageMeter()
     psnr_meter = AverageMeter()
     bpp_loss_meter = AverageMeter()
-    y_norm_meter = AverageMeter()
+    y_norm1_meter = AverageMeter()
+    y_norm10_meter = AverageMeter()
+    norm_sum_meter = AverageMeter()
     q_norm_meter = AverageMeter()
 
     # # Fix encoder parameters
@@ -126,18 +128,22 @@ def train_one_epoch(
         mse_loss_meter.update(out_criterion["mse_loss"].item())
         psnr_meter.update(out_criterion["psnr"])
         bpp_loss_meter.update(out_criterion["bpp_loss"].item())
-        y_norm_meter.update(out_criterion["y_norm"].item())
+        y_norm1_meter.update(out_criterion["y_norm1"].item())
+        y_norm10_meter.update(out_criterion["y_norm10"].item())
+        norm_sum_meter.update(out_criterion["norm_sum"].item())
         q_norm_meter.update(out_criterion["q_norm"].item())
 
         train_iter.set_description(
             f"epoch {epoch}: ["
             f"{i*len(d)}/{len(train_dataloader.dataset)}"
             f" ({100. * i / len(train_dataloader):.0f}%)]"
-            f'L: {out_criterion["loss"].item():.3f} ({loss_meter.avg:.3f})|'
+            #f'L: {out_criterion["loss"].item():.3f} ({loss_meter.avg:.3f})|'
             f'M: {out_criterion["mse_loss"].item():.4f} ({mse_loss_meter.avg:.4f})|'
             f'P: {out_criterion["psnr"]:.2f} ({psnr_meter.avg:.2f})|'
             f'B: {out_criterion["bpp_loss"].item():.3f} ({bpp_loss_meter.avg:.3f})|'
-            f'y_norm: {out_criterion["y_norm"].item():.3f} ({y_norm_meter.avg:.3f})|'
+            f'y_norm1: {out_criterion["y_norm1"].item():.3f} ({y_norm1_meter.avg:.3f})|'
+            f'y_norm10: {out_criterion["y_norm10"].item():.3f} ({y_norm10_meter.avg:.3f})|'
+            f'norm_sum: {out_criterion["norm_sum"].item():.3f} ({norm_sum_meter.avg:.3f})|'
             f'q_norm: {out_criterion["q_norm"].item():.3f} ({q_norm_meter.avg:.3f})|'
         )
     
@@ -157,7 +163,9 @@ def test_epoch(epoch, test_dataloader, model, criterion):
     mse_loss = AverageMeter()
     aux_loss = AverageMeter()
     psnr = AverageMeter()
-    y_norm = AverageMeter()
+    y_norm1 = AverageMeter()
+    y_norm10 = AverageMeter()
+    norm_sum = AverageMeter()
     q_norm = AverageMeter()
 
     with torch.no_grad():
@@ -171,7 +179,9 @@ def test_epoch(epoch, test_dataloader, model, criterion):
             loss.update(out_criterion["loss"])
             mse_loss.update(out_criterion["mse_loss"])
             psnr.update(out_criterion["psnr"])
-            y_norm.update(out_criterion["y_norm"])
+            y_norm1.update(out_criterion["y_norm1"])
+            y_norm10.update(out_criterion["y_norm10"])
+            norm_sum.update(out_criterion["norm_sum"])
             q_norm.update(out_criterion["q_norm"])
 
     print(
@@ -180,17 +190,19 @@ def test_epoch(epoch, test_dataloader, model, criterion):
         f"\tPSNR: {psnr.avg:.2f} |"
         f"\tBpp loss: {bpp_loss.avg:.3f} |"
         f"\tMSE loss: {mse_loss.avg:.4f} |"
-        f'\ty_norm: {y_norm.avg:.3f} |'
+        f'\ty_norm1: {y_norm1.avg:.3f} |'
+        f'\ty_norm10: {y_norm10.avg:.3f} |'
+        f'\tnorm_sum: {norm_sum.avg:.3f} |'
         f'\tq_norm: {q_norm.avg:.3f} |'
     )
 
     return loss.avg
 
 
-def save_checkpoint(state, is_best, filename="FactorizedPrior_L2NormXS1e-3_checkpoint.pth.tar"):
+def save_checkpoint(state, is_best, filename='FactorizedPrior_L2NormTwoPredictorList_checkpoint.pth.tar'):
     torch.save(state, filename)
     if is_best:
-        shutil.copyfile(filename, "FactorizedPrior_L2NormXS1e-3_checkpoint_best_loss.pth.tar")
+        shutil.copyfile(filename, 'FactorizedPrior_L2NormTwoPredictorList_checkpoint_best_loss.pth.tar')
 
 
 def parse_args(argv):
@@ -208,7 +220,7 @@ def parse_args(argv):
     parser.add_argument(
         "-e",
         "--epochs",
-        default=1000,
+        default=5000,
         type=int,
         help="Number of epochs (default: %(default)s)",
     )
@@ -327,7 +339,8 @@ def main(argv):
 
     #optimizer, aux_optimizer = configure_optimizers(net, args)
     parameters = net.optim_parameters()
-    optimizer = torch.optim.Adam([{'params': parameters}], lr=1e-6, weight_decay=5e-4)
+    optimizer = torch.optim.Adam([{'params': parameters}], lr=1e-6#, weight_decay=5e-4
+    )
     lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, "min")
     criterion = RateDistortionLoss(lmbda=args.lmbda)
 
@@ -339,7 +352,7 @@ def main(argv):
         net.load_state_dict_whatever(checkpoint["state_dict"])
         # optimizer.load_state_dict(checkpoint["optimizer"])
         # aux_optimizer.load_state_dict(checkpoint["aux_optimizer"])
-        # lr_scheduler.load_state_dict(checkpoint["lr_scheduler"])
+        #lr_scheduler.load_state_dict(checkpoint["lr_scheduler"])
 
     best_loss = float("inf")
     for epoch in range(last_epoch, args.epochs):
@@ -354,7 +367,7 @@ def main(argv):
             args.clip_max_norm,
         )
         loss = test_epoch(epoch, test_dataloader, net, criterion)
-        lr_scheduler.step(loss)
+        #lr_scheduler.step(loss)
 
         is_best = loss < best_loss
         best_loss = min(loss, best_loss)

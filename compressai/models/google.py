@@ -104,7 +104,7 @@ class FactorizedPrior(CompressionModel):
         super().__init__(**kwargs)
 
         self.entropy_bottleneck = EntropyBottleneck(M)
-        self.y_predictor = Unet(M, M)
+        self.y_predictor_list = nn.ModuleList([Unet(M, M), Unet(M, M)])
 
         self.g_a = nn.Sequential(
             conv(3, N),
@@ -137,13 +137,18 @@ class FactorizedPrior(CompressionModel):
         y = self.g_a(x)
         y_hat, y_likelihoods = self.entropy_bottleneck(y)
         y_round = torch.round(y)
-        y_predict = self.y_predictor(y_round) + y_round
-        y_err = y_predict - y.detach()
-        y_norm = torch.norm(y_err, 2)
-        #y_norm = torch.norm(y_err, 1)
         q_err = y - y_round
         q_norm = torch.norm(q_err, 2)
-        #q_norm = torch.norm(q_err, 1)
+        norm_list = []
+        for i in range(0, 2):
+            b, *_, device = *x.shape, x.device
+            batched_times = torch.full((b,), 0, device = x.device, dtype = torch.long)
+            y_predict = self.y_predictor_list[i](y_round, batched_times) + y_round
+            y_err = y_predict - y.detach()
+            y_norm = torch.norm(y_err, 2)
+            norm_list.append(y_norm)
+            y_round = y_predict.detach()
+
         y_hat = y_predict.detach()
         x_hat = self.g_s(y_hat)
 
@@ -152,7 +157,9 @@ class FactorizedPrior(CompressionModel):
             "likelihoods": {
                 "y": y_likelihoods,
             },
-            "y_norm": y_norm,
+            "y_norm1": norm_list[0],
+            "y_norm10": norm_list[-1],
+            "norm_sum": sum(norm_list),
             "q_norm": q_norm,
         }
 
@@ -188,7 +195,7 @@ class FactorizedPrior(CompressionModel):
     def optim_parameters(self):
         parameters = []
         parameters += self.g_s.parameters()
-        parameters += self.y_predictor.parameters()
+        parameters += self.y_predictor_list.parameters()
         return parameters
 
 
