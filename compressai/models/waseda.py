@@ -109,57 +109,10 @@ class Cheng2020Anchor(JointAutoregressiveHierarchicalPriors):
         """Return a new model instance from `state_dict`."""
         N = state_dict["g_a.0.conv1.weight"].size(0)
         net = cls(N)
-        net.load_state_dict(state_dict)
+        net.load_state_dict_whatever(state_dict)
         return net
 
-    def forward(self, x):
-        y = self.g_a(x)
-        z = self.h_a(y)
-        z_hat, z_likelihoods = self.entropy_bottleneck(z)
-        params = self.h_s(z_hat)
-        y_round = torch.round(y)
-        z_round = torch.round(z)
-        side_info = self.upsampler(z_round)
-        all_info = torch.cat((y_round, side_info), dim=1)
-        y_predict = self.y_predictor(all_info) + y_round
-        y_err_loss = torch.norm(y_err, 1) * 1e-5
-        q_err = y - y_round
 
-        y_hat = self.gaussian_conditional.quantize(
-            y, "noise" if self.training else "dequantize"
-        )
-        ctx_params = self.context_prediction(y_hat)
-        gaussian_params = self.entropy_parameters(
-            torch.cat((params, ctx_params), dim=1)
-        )
-        scales_hat, means_hat = gaussian_params.chunk(2, 1)
-        _, y_likelihoods = self.gaussian_conditional(y, scales_hat, means=means_hat)
-        #y_hat = y_predict.detach()
-        x_hat = self.g_s(y_hat)
-
-        return {
-            "x_hat": x_hat,
-            "likelihoods": {"y": y_likelihoods, "z": z_likelihoods},
-            "y_err": y_err,
-            "q_err": q_err,
-            "y_err_loss": y_err_loss,
-        }
-    
-    def optim_parameters(self):
-        parameters = []
-        #parameters += self.g_s.parameters()
-        #parameters += self.y_predictor.parameters()
-        return parameters
-
-    #Use this if load pretrained model checkpoints
-    def load_state_dict_whatever(self, state_dict):
-        own_state = self.state_dict()
-        for name, param in state_dict.items():
-            if name.endswith("._offset") or name.endswith("._quantized_cdf") or name.endswith("._cdf_length") or name.endswith(".scale_table"):
-                continue
-            if name in own_state and own_state[name].size() == param.size():
-                own_state[name].copy_(param)
-        
 @register_model("cheng2020-attn")
 class Cheng2020Attention(Cheng2020Anchor):
     """Self-attention model variant from `"Learned Image Compression with

@@ -37,9 +37,6 @@ from compressai.ans import BufferedRansEncoder, RansDecoder
 from compressai.entropy_models import EntropyBottleneck, GaussianConditional
 from compressai.layers import GDN, MaskedConv2d
 from compressai.registry import register_model
-from compressai.ops import quantize_ste
-
-from .denoising_diffusion_pytorch import Unet
 
 from .base import (
     SCALES_LEVELS,
@@ -63,8 +60,6 @@ __all__ = [
     "SCALES_LEVELS",
 ]
 
-
-#TODO:BASELINE
 
 @register_model("bmshj2018-factorized")
 class FactorizedPrior(CompressionModel):
@@ -166,142 +161,6 @@ class FactorizedPrior(CompressionModel):
         y_hat = self.entropy_bottleneck.decompress(strings[0], shape)
         x_hat = self.g_s(y_hat).clamp_(0, 1)
         return {"x_hat": x_hat}
-
-# @register_model("bmshj2018-factorized")
-# class FactorizedPrior(CompressionModel):
-#     r"""Factorized Prior model from J. Balle, D. Minnen, S. Singh, S.J. Hwang,
-#     N. Johnston: `"Variational Image Compression with a Scale Hyperprior"
-#     <https://arxiv.org/abs/1802.01436>`_, Int Conf. on Learning Representations
-#     (ICLR), 2018.
-
-#     .. code-block:: none
-
-#                   ┌───┐    y
-#             x ──►─┤g_a├──►─┐
-#                   └───┘    │
-#                            ▼
-#                          ┌─┴─┐
-#                          │ Q │
-#                          └─┬─┘
-#                            │
-#                      y_hat ▼
-#                            │
-#                            ·
-#                         EB :
-#                            ·
-#                            │
-#                      y_hat ▼
-#                            │
-#                   ┌───┐    │
-#         x_hat ──◄─┤g_s├────┘
-#                   └───┘
-
-#         EB = Entropy bottleneck
-
-#     Args:
-#         N (int): Number of channels
-#         M (int): Number of channels in the expansion layers (last layer of the
-#             encoder and last layer of the hyperprior decoder)
-#     """
-
-#     def __init__(self, N, M, **kwargs):
-#         super().__init__(**kwargs)
-
-#         self.entropy_bottleneck = EntropyBottleneck(M)
-#         self.y_predictor_list = nn.ModuleList([Unet(M, M), Unet(M, M)])
-
-#         self.g_a = nn.Sequential(
-#             conv(3, N),
-#             GDN(N),
-#             conv(N, N),
-#             GDN(N),
-#             conv(N, N),
-#             GDN(N),
-#             conv(N, M),
-#         )
-
-#         self.g_s = nn.Sequential(
-#             deconv(M, N),
-#             GDN(N, inverse=True),
-#             deconv(N, N),
-#             GDN(N, inverse=True),
-#             deconv(N, N),
-#             GDN(N, inverse=True),
-#             deconv(N, 3),
-#         )
-
-#         self.N = N
-#         self.M = M
-
-#     @property
-#     def downsampling_factor(self) -> int:
-#         return 2**4
-
-#     def forward(self, x):
-#         y = self.g_a(x)
-#         y_hat, y_likelihoods = self.entropy_bottleneck(y)
-#         y_round = torch.round(y)
-#         q_err = y - y_round
-#         q_norm = torch.norm(q_err, 2)
-#         norm_list = []
-#         for i in range(0, 2):
-#             b, *_, device = *x.shape, x.device
-#             batched_times = torch.full((b,), 0, device = x.device, dtype = torch.long)
-#             y_predict = self.y_predictor_list[i](y_round, batched_times) + y_round
-#             y_err = y_predict - y.detach()
-#             y_norm = torch.norm(y_err, 2)
-#             norm_list.append(y_norm)
-#             y_round = y_predict.detach()
-
-#         y_hat = y_predict.detach()
-#         x_hat = self.g_s(y_hat)
-
-#         return {
-#             "x_hat": x_hat,
-#             "likelihoods": {
-#                 "y": y_likelihoods,
-#             },
-#             "y_norm1": norm_list[0],
-#             "y_norm2": norm_list[1],
-#             "norm_sum": sum(norm_list),
-#             "q_norm": q_norm,
-#         }
-
-    @classmethod
-    def from_state_dict(cls, state_dict):
-        """Return a new model instance from `state_dict`."""
-        N = state_dict["g_a.0.weight"].size(0)
-        M = state_dict["g_a.6.weight"].size(0)
-        net = cls(N, M)
-        #net.load_state_dict(state_dict)
-        net.load_state_dict_whatever(state_dict)
-        return net
-    
-    #Use this if load pretrained model checkpoints
-    def load_state_dict_whatever(self, state_dict):
-        own_state = self.state_dict()
-        for name, param in state_dict.items():
-            if name.endswith("._offset") or name.endswith("._quantized_cdf") or name.endswith("._cdf_length") or name.endswith(".scale_table"):
-                continue
-            if name in own_state and own_state[name].size() == param.size():
-                own_state[name].copy_(param)
-
-    def compress(self, x):
-        y = self.g_a(x)
-        y_strings = self.entropy_bottleneck.compress(y)
-        return {"strings": [y_strings], "shape": y.size()[-2:]}
-
-    def decompress(self, strings, shape):
-        assert isinstance(strings, list) and len(strings) == 1
-        y_hat = self.entropy_bottleneck.decompress(strings[0], shape)
-        x_hat = self.g_s(y_hat).clamp_(0, 1)
-        return {"x_hat": x_hat}
-
-    def optim_parameters(self):
-        parameters = []
-        parameters += self.g_s.parameters()
-        #parameters += self.y_predictor_list.parameters()
-        return parameters
 
 
 @register_model("bmshj2018-factorized-relu")
@@ -449,11 +308,7 @@ class ScaleHyperprior(CompressionModel):
         N = state_dict["g_a.0.weight"].size(0)
         M = state_dict["g_a.6.weight"].size(0)
         net = cls(N, M)
-
-        #BASELINE
-        #net.load_state_dict(state_dict)
-
-        net.load_state_dict_whatever(state_dict)
+        net.load_state_dict(state_dict)
         return net
 
     def compress(self, x):
@@ -476,112 +331,6 @@ class ScaleHyperprior(CompressionModel):
         y_hat = self.gaussian_conditional.decompress(strings[0], indexes, z_hat.dtype)
         x_hat = self.g_s(y_hat).clamp_(0, 1)
         return {"x_hat": x_hat}
-
-# #TODO: BASELINE
-
-# @register_model("mbt2018-mean")
-# class MeanScaleHyperprior(ScaleHyperprior):
-#     r"""Scale Hyperprior with non zero-mean Gaussian conditionals from D.
-#     Minnen, J. Balle, G.D. Toderici: `"Joint Autoregressive and Hierarchical
-#     Priors for Learned Image Compression" <https://arxiv.org/abs/1809.02736>`_,
-#     Adv. in Neural Information Processing Systems 31 (NeurIPS 2018).
-
-#     .. code-block:: none
-
-#                   ┌───┐    y     ┌───┐  z  ┌───┐ z_hat      z_hat ┌───┐
-#             x ──►─┤g_a├──►─┬──►──┤h_a├──►──┤ Q ├───►───·⋯⋯·───►───┤h_s├─┐
-#                   └───┘    │     └───┘     └───┘        EB        └───┘ │
-#                            ▼                                            │
-#                          ┌─┴─┐                                          │
-#                          │ Q │                                          ▼
-#                          └─┬─┘                                          │
-#                            │                                            │
-#                      y_hat ▼                                            │
-#                            │                                            │
-#                            ·                                            │
-#                         GC : ◄─────────────────────◄────────────────────┘
-#                            ·                 scales_hat
-#                            │                 means_hat
-#                      y_hat ▼
-#                            │
-#                   ┌───┐    │
-#         x_hat ──◄─┤g_s├────┘
-#                   └───┘
-
-#         EB = Entropy bottleneck
-#         GC = Gaussian conditional
-
-#     Args:
-#         N (int): Number of channels
-#         M (int): Number of channels in the expansion layers (last layer of the
-#             encoder and last layer of the hyperprior decoder)
-#     """
-
-#     def __init__(self, N, M, **kwargs):
-#         super().__init__(N=N, M=M, **kwargs)
-
-#         self.h_a = nn.Sequential(
-#             conv(M, N, stride=1, kernel_size=3),
-#             nn.LeakyReLU(inplace=True),
-#             conv(N, N),
-#             nn.LeakyReLU(inplace=True),
-#             conv(N, N),
-#         )
-
-#         self.h_s = nn.Sequential(
-#             deconv(N, M),
-#             nn.LeakyReLU(inplace=True),
-#             deconv(M, M * 3 // 2),
-#             nn.LeakyReLU(inplace=True),
-#             conv(M * 3 // 2, M * 2, stride=1, kernel_size=3),
-#         )
-
-#     def forward(self, x):
-#         y = self.g_a(x)
-#         z = self.h_a(y)
-#         z_hat, z_likelihoods = self.entropy_bottleneck(z)
-#         gaussian_params = self.h_s(z_hat)
-#         scales_hat, means_hat = gaussian_params.chunk(2, 1)
-#         y_hat, y_likelihoods = self.gaussian_conditional(y, scales_hat, means=means_hat)
-#         x_hat = self.g_s(y_hat)
-
-#         return {
-#             "x_hat": x_hat,
-#             "likelihoods": {"y": y_likelihoods, "z": z_likelihoods},
-#         }
-
-#     def compress(self, x):
-#         y = self.g_a(x)
-#         z = self.h_a(y)
-
-#         z_strings = self.entropy_bottleneck.compress(z)
-#         z_hat = self.entropy_bottleneck.decompress(z_strings, z.size()[-2:])
-
-#         gaussian_params = self.h_s(z_hat)
-#         scales_hat, means_hat = gaussian_params.chunk(2, 1)
-#         indexes = self.gaussian_conditional.build_indexes(scales_hat)
-#         y_strings = self.gaussian_conditional.compress(y, indexes, means=means_hat)
-#         return {"strings": [y_strings, z_strings], "shape": z.size()[-2:]}
-
-#     def decompress(self, strings, shape):
-#         assert isinstance(strings, list) and len(strings) == 2
-#         z_hat = self.entropy_bottleneck.decompress(strings[1], shape)
-#         gaussian_params = self.h_s(z_hat)
-#         scales_hat, means_hat = gaussian_params.chunk(2, 1)
-#         indexes = self.gaussian_conditional.build_indexes(scales_hat)
-#         y_hat = self.gaussian_conditional.decompress(
-#             strings[0], indexes, means=means_hat
-#         )
-#         x_hat = self.g_s(y_hat).clamp_(0, 1)
-#         return {"x_hat": x_hat}
-
-#     def load_state_dict_whatever(self, state_dict):
-#         own_state = self.state_dict()
-#         for name, param in state_dict.items():
-#             if name.endswith("._offset") or name.endswith("._quantized_cdf") or name.endswith("._cdf_length") or name.endswith(".scale_table"):
-#                 continue
-#             if name in own_state and own_state[name].size() == param.size():
-#                 own_state[name].copy_(param)
 
 
 @register_model("mbt2018-mean")
@@ -625,9 +374,6 @@ class MeanScaleHyperprior(ScaleHyperprior):
     def __init__(self, N, M, **kwargs):
         super().__init__(N=N, M=M, **kwargs)
 
-        self.upsampler = nn.PixelShuffle(4)
-        self.y_predictor_list = nn.ModuleList([Unet(M, M), Unet(M, M)])
-
         self.h_a = nn.Sequential(
             conv(M, N, stride=1, kernel_size=3),
             nn.LeakyReLU(inplace=True),
@@ -645,36 +391,17 @@ class MeanScaleHyperprior(ScaleHyperprior):
         )
 
     def forward(self, x):
-        #print("I am using the old model")
         y = self.g_a(x)
         z = self.h_a(y)
-        y_round = torch.round(y)
-        q_err = y - y_round
-        q_norm = torch.norm(q_err, 2)
-        norm_list = []
-        for i in range(0, 2):
-            b, *_, device = *x.shape, x.device
-            batched_times = torch.full((b,), 0, device = x.device, dtype = torch.long)
-            y_predict = self.y_predictor_list[i](y_round, batched_times) + y_round
-            y_err = y_predict - y.detach()
-            y_norm = torch.norm(y_err, 2)
-            norm_list.append(y_norm)
-            y_round = y_predict.detach()
-
         z_hat, z_likelihoods = self.entropy_bottleneck(z)
         gaussian_params = self.h_s(z_hat)
         scales_hat, means_hat = gaussian_params.chunk(2, 1)
         y_hat, y_likelihoods = self.gaussian_conditional(y, scales_hat, means=means_hat)
-        y_hat = y_predict.detach()
         x_hat = self.g_s(y_hat)
 
         return {
             "x_hat": x_hat,
             "likelihoods": {"y": y_likelihoods, "z": z_likelihoods},
-            "y_norm1": norm_list[0],
-            "y_norm2": norm_list[1],
-            "norm_sum": sum(norm_list),
-            "q_norm": q_norm,
         }
 
     def compress(self, x):
@@ -702,153 +429,6 @@ class MeanScaleHyperprior(ScaleHyperprior):
         x_hat = self.g_s(y_hat).clamp_(0, 1)
         return {"x_hat": x_hat}
 
-    def optim_parameters(self):
-        parameters = []
-        parameters += self.g_s.parameters()
-        parameters += self.y_predictor_list.parameters()
-        return parameters
-
-    #Use this if load pretrained model checkpoints
-    def load_state_dict_whatever(self, state_dict):
-        own_state = self.state_dict()
-        for name, param in state_dict.items():
-            if name.endswith("._offset") or name.endswith("._quantized_cdf") or name.endswith("._cdf_length") or name.endswith(".scale_table"):
-                continue
-            if name in own_state and own_state[name].size() == param.size():
-                own_state[name].copy_(param)
-
-# # TODO: BASELINE
-# @register_model("mbt2018")
-# class JointAutoregressiveHierarchicalPriors(MeanScaleHyperprior):
-#     r"""Joint Autoregressive Hierarchical Priors model from D.
-#     Minnen, J. Balle, G.D. Toderici: `"Joint Autoregressive and Hierarchical
-#     Priors for Learned Image Compression" <https://arxiv.org/abs/1809.02736>`_,
-#     Adv. in Neural Information Processing Systems 31 (NeurIPS 2018).
-
-#     .. code-block:: none
-
-#                   ┌───┐    y     ┌───┐  z  ┌───┐ z_hat      z_hat ┌───┐
-#             x ──►─┤g_a├──►─┬──►──┤h_a├──►──┤ Q ├───►───·⋯⋯·───►───┤h_s├─┐
-#                   └───┘    │     └───┘     └───┘        EB        └───┘ │
-#                            ▼                                            │
-#                          ┌─┴─┐                                          │
-#                          │ Q │                                   params ▼
-#                          └─┬─┘                                          │
-#                      y_hat ▼                  ┌─────┐                   │
-#                            ├──────────►───────┤  CP ├────────►──────────┤
-#                            │                  └─────┘                   │
-#                            ▼                                            ▼
-#                            │                                            │
-#                            ·                  ┌─────┐                   │
-#                         GC : ◄────────◄───────┤  EP ├────────◄──────────┘
-#                            ·     scales_hat   └─────┘
-#                            │      means_hat
-#                      y_hat ▼
-#                            │
-#                   ┌───┐    │
-#         x_hat ──◄─┤g_s├────┘
-#                   └───┘
-
-#         EB = Entropy bottleneck
-#         GC = Gaussian conditional
-#         EP = Entropy parameters network
-#         CP = Context prediction (masked convolution)
-
-#     Args:
-#         N (int): Number of channels
-#         M (int): Number of channels in the expansion layers (last layer of the
-#             encoder and last layer of the hyperprior decoder)
-#     """
-
-#     def __init__(self, N=192, M=192, **kwargs):
-#         super().__init__(N=N, M=M, **kwargs)
-
-#         self.g_a = nn.Sequential(
-#             conv(3, N, kernel_size=5, stride=2),
-#             GDN(N),
-#             conv(N, N, kernel_size=5, stride=2),
-#             GDN(N),
-#             conv(N, N, kernel_size=5, stride=2),
-#             GDN(N),
-#             conv(N, M, kernel_size=5, stride=2),
-#         )
-
-#         self.g_s = nn.Sequential(
-#             deconv(M, N, kernel_size=5, stride=2),
-#             GDN(N, inverse=True),
-#             deconv(N, N, kernel_size=5, stride=2),
-#             GDN(N, inverse=True),
-#             deconv(N, N, kernel_size=5, stride=2),
-#             GDN(N, inverse=True),
-#             deconv(N, 3, kernel_size=5, stride=2),
-#         )
-
-#         self.h_a = nn.Sequential(
-#             conv(M, N, stride=1, kernel_size=3),
-#             nn.LeakyReLU(inplace=True),
-#             conv(N, N, stride=2, kernel_size=5),
-#             nn.LeakyReLU(inplace=True),
-#             conv(N, N, stride=2, kernel_size=5),
-#         )
-
-#         self.h_s = nn.Sequential(
-#             deconv(N, M, stride=2, kernel_size=5),
-#             nn.LeakyReLU(inplace=True),
-#             deconv(M, M * 3 // 2, stride=2, kernel_size=5),
-#             nn.LeakyReLU(inplace=True),
-#             conv(M * 3 // 2, M * 2, stride=1, kernel_size=3),
-#         )
-
-#         self.entropy_parameters = nn.Sequential(
-#             nn.Conv2d(M * 12 // 3, M * 10 // 3, 1),
-#             nn.LeakyReLU(inplace=True),
-#             nn.Conv2d(M * 10 // 3, M * 8 // 3, 1),
-#             nn.LeakyReLU(inplace=True),
-#             nn.Conv2d(M * 8 // 3, M * 6 // 3, 1),
-#         )
-
-#         self.context_prediction = MaskedConv2d(
-#             M, 2 * M, kernel_size=5, padding=2, stride=1
-#         )
-
-#         self.gaussian_conditional = GaussianConditional(None)
-#         self.N = int(N)
-#         self.M = int(M)
-
-#     @property
-#     def downsampling_factor(self) -> int:
-#         return 2 ** (4 + 2)
-
-#     def forward(self, x):
-#         y = self.g_a(x)
-#         z = self.h_a(y)
-#         z_hat, z_likelihoods = self.entropy_bottleneck(z)
-#         params = self.h_s(z_hat)
-
-#         y_hat = self.gaussian_conditional.quantize(
-#             y, "noise" if self.training else "dequantize"
-#         )
-#         ctx_params = self.context_prediction(y_hat)
-#         gaussian_params = self.entropy_parameters(
-#             torch.cat((params, ctx_params), dim=1)
-#         )
-#         scales_hat, means_hat = gaussian_params.chunk(2, 1)
-#         _, y_likelihoods = self.gaussian_conditional(y, scales_hat, means=means_hat)
-#         x_hat = self.g_s(y_hat)
-
-#         return {
-#             "x_hat": x_hat,
-#             "likelihoods": {"y": y_likelihoods, "z": z_likelihoods},
-#         }
-
-#     @classmethod
-#     def from_state_dict(cls, state_dict):
-#         """Return a new model instance from `state_dict`."""
-#         N = state_dict["g_a.0.weight"].size(0)
-#         M = state_dict["g_a.6.weight"].size(0)
-#         net = cls(N, M)
-#         net.load_state_dict(state_dict)
-#         return net
 
 @register_model("mbt2018")
 class JointAutoregressiveHierarchicalPriors(MeanScaleHyperprior):
@@ -894,8 +474,6 @@ class JointAutoregressiveHierarchicalPriors(MeanScaleHyperprior):
 
     def __init__(self, N=192, M=192, **kwargs):
         super().__init__(N=N, M=M, **kwargs)
-
-        self.y_predictor_list = nn.ModuleList([Unet(N, N)])
 
         self.g_a = nn.Sequential(
             conv(3, N, kernel_size=5, stride=2),
@@ -957,19 +535,6 @@ class JointAutoregressiveHierarchicalPriors(MeanScaleHyperprior):
         y = self.g_a(x)
         z = self.h_a(y)
         z_hat, z_likelihoods = self.entropy_bottleneck(z)
-        y_round = torch.round(y)
-        q_err = y - y_round
-        q_norm = torch.norm(q_err, 2)
-        norm_list = []
-        for i in range(0, 1):
-            b, *_, device = *x.shape, x.device
-            batched_times = torch.full((b,), 0, device = x.device, dtype = torch.long)
-            y_predict = self.y_predictor_list[i](y_round, batched_times) + y_round
-            y_err = y_predict - y.detach()
-            y_norm = torch.norm(y_err, 2)
-            norm_list.append(y_norm)
-            y_round = y_predict.detach()
-         
         params = self.h_s(z_hat)
 
         y_hat = self.gaussian_conditional.quantize(
@@ -981,42 +546,12 @@ class JointAutoregressiveHierarchicalPriors(MeanScaleHyperprior):
         )
         scales_hat, means_hat = gaussian_params.chunk(2, 1)
         _, y_likelihoods = self.gaussian_conditional(y, scales_hat, means=means_hat)
-        y_hat = y_predict.detach()
         x_hat = self.g_s(y_hat)
 
         return {
             "x_hat": x_hat,
-            "likelihoods": {
-                "y": y_likelihoods,
-            },
-            "y_norm1": norm_list[0],
-            #"y_norm2": norm_list[1],
-            "norm_sum": sum(norm_list),
-            "q_norm": q_norm,
+            "likelihoods": {"y": y_likelihoods, "z": z_likelihoods},
         }
-
-    # # TODO: BASELINE
-    # def forward(self, x):
-    #     y = self.g_a(x)
-    #     z = self.h_a(y)
-    #     z_hat, z_likelihoods = self.entropy_bottleneck(z)
-    #     params = self.h_s(z_hat)
-
-    #     y_hat = self.gaussian_conditional.quantize(
-    #         y, "noise" if self.training else "dequantize"
-    #     )
-    #     ctx_params = self.context_prediction(y_hat)
-    #     gaussian_params = self.entropy_parameters(
-    #         torch.cat((params, ctx_params), dim=1)
-    #     )
-    #     scales_hat, means_hat = gaussian_params.chunk(2, 1)
-    #     _, y_likelihoods = self.gaussian_conditional(y, scales_hat, means=means_hat)
-    #     x_hat = self.g_s(y_hat)
-
-    #     return {
-    #         "x_hat": x_hat,
-    #         "likelihoods": {"y": y_likelihoods, "z": z_likelihoods},
-    #     }
 
     @classmethod
     def from_state_dict(cls, state_dict):
@@ -1024,25 +559,9 @@ class JointAutoregressiveHierarchicalPriors(MeanScaleHyperprior):
         N = state_dict["g_a.0.weight"].size(0)
         M = state_dict["g_a.6.weight"].size(0)
         net = cls(N, M)
-        net.load_state_dict_whatever(state_dict)
+        net.load_state_dict(state_dict)
         return net
 
-    #Use this if load pretrained model checkpoints
-    def load_state_dict_whatever(self, state_dict):
-        own_state = self.state_dict()
-        for name, param in state_dict.items():
-            if name.endswith("._offset") or name.endswith("._quantized_cdf") or name.endswith("._cdf_length") or name.endswith(".scale_table"):
-                continue
-            if name in own_state and own_state[name].size() == param.size():
-                own_state[name].copy_(param)
-
-    def optim_parameters(self):
-        parameters = []
-        parameters += self.g_s.parameters()
-        parameters += self.y_predictor_list.parameters()
-
-        return parameters
-############################################
     def compress(self, x):
         if next(self.parameters()).device != torch.device("cpu"):
             warnings.warn(

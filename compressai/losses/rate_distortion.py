@@ -68,11 +68,15 @@ class RateDistortionLoss(nn.Module):
             out["mse_loss"] = self.metric(output["x_hat"], target)
             distortion = 255**2 * out["mse_loss"]
 
-        out["loss"] = self.lmbda * distortion + out["bpp_loss"] + output["norm_sum"] * 1
+        #out["loss"] = self.lmbda * distortion + out["bpp_loss"] + 1e-3 * output["norm_sum"]
+        #BASELINE LOSS:
+        out["loss"] = self.lmbda * distortion + out["bpp_loss"]
+        
         out["psnr"] = 10 * math.log10(1 / (out["mse_loss"]))
+
         out["y_norm1"] = output["y_norm1"]
-        out["y_norm10"] = output["y_norm10"]
-        out["norm_sum"] = output["norm_sum"]
+        #out["y_norm2"] = output["y_norm2"]
+        #out["y_norm10"] = output["y_norm10"]
         out["q_norm"] = output["q_norm"]
 
         if self.return_type == "all":

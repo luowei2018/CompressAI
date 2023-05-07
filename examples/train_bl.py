@@ -43,7 +43,7 @@ from torchvision import transforms
 from compressai.datasets import ImageFolder
 from compressai.losses import RateDistortionLoss
 from compressai.optimizers import net_aux_optimizer
-from compressai.zoo import image_models
+from compressai.zoo import image_models, bmshj2018_factorized, mbt2018_mean, cheng2020_attn, mbt2018
 
 
 class AverageMeter:
@@ -95,10 +95,6 @@ def train_one_epoch(
     mse_loss_meter = AverageMeter()
     psnr_meter = AverageMeter()
     bpp_loss_meter = AverageMeter()
-    y_norm1_meter = AverageMeter()
-    #y_norm2_meter = AverageMeter()
-    #y_norm10_meter = AverageMeter()
-    q_norm_meter = AverageMeter()
 
     for i, d in enumerate(train_iter):
         #break
@@ -123,23 +119,15 @@ def train_one_epoch(
         mse_loss_meter.update(out_criterion["mse_loss"].item())
         psnr_meter.update(out_criterion["psnr"])
         bpp_loss_meter.update(out_criterion["bpp_loss"].item())
-        y_norm1_meter.update(out_criterion["y_norm1"].item())
-        #y_norm2_meter.update(out_criterion["y_norm2"].item())
-        #y_norm10_meter.update(out_criterion["y_norm10"].item())
-        q_norm_meter.update(out_criterion["q_norm"].item())
 
         train_iter.set_description(
             f"epoch {epoch}: ["
             f"{i*len(d)}/{len(train_dataloader.dataset)}"
             f" ({100. * i / len(train_dataloader):.0f}%)]"
-            f'L: {out_criterion["loss"].item():.3f} ({loss_meter.avg:.3f})|'
+            #f'L: {out_criterion["loss"].item():.3f} ({loss_meter.avg:.3f})|'
             f'M: {out_criterion["mse_loss"].item():.4f} ({mse_loss_meter.avg:.4f})|'
             f'P: {out_criterion["psnr"]:.2f} ({psnr_meter.avg:.2f})|'
             f'B: {out_criterion["bpp_loss"].item():.3f} ({bpp_loss_meter.avg:.3f})|'
-            f'y_norm1: {out_criterion["y_norm1"].item():.3f} ({y_norm1_meter.avg:.3f})|'
-            #f'y_norm2: {out_criterion["y_norm2"].item():.3f} ({y_norm2_meter.avg:.3f})|'
-            #f'y_norm10: {out_criterion["y_norm10"].item():.3f} ({y_norm10_meter.avg:.3f})|'
-            f'q_norm: {out_criterion["q_norm"].item():.3f} ({q_norm_meter.avg:.3f})|'
         )
 
 
@@ -152,10 +140,6 @@ def test_epoch(epoch, test_dataloader, model, criterion):
     mse_loss = AverageMeter()
     aux_loss = AverageMeter()
     psnr = AverageMeter()
-    y_norm1 = AverageMeter()
-    #y_norm2 = AverageMeter()
-    #y_norm10 = AverageMeter()
-    q_norm = AverageMeter()
 
     with torch.no_grad():
         for d in test_dataloader:
@@ -168,10 +152,6 @@ def test_epoch(epoch, test_dataloader, model, criterion):
             loss.update(out_criterion["loss"])
             mse_loss.update(out_criterion["mse_loss"])
             psnr.update(out_criterion["psnr"])
-            y_norm1.update(out_criterion["y_norm1"])
-            #y_norm2.update(out_criterion["y_norm2"])
-            #y_norm10.update(out_criterion["y_norm10"])
-            q_norm.update(out_criterion["q_norm"])
 
     print(
         f"Test epoch {epoch}: Average losses:"
@@ -179,42 +159,24 @@ def test_epoch(epoch, test_dataloader, model, criterion):
         f"\tPSNR: {psnr.avg:.2f} |"
         f"\tBpp loss: {bpp_loss.avg:.3f} |"
         f"\tMSE loss: {mse_loss.avg:.4f} |"
-        f'\ty_norm1: {y_norm1.avg:.3f} |'
-        #f'\ty_norm2: {y_norm2.avg:.3f} |'
-        #f'\ty_norm10: {y_norm10.avg:.3f} |'
-        f'\tq_norm: {q_norm.avg:.3f} |'
     )
 
-    # Open the file in write mode
-    with open('/home/weiluo6/CompressAI/examples/myresults/mbt2018_q1_1e-6_1Pred1e-2.txt', 'a+') as f:
-    # Write the print statement to the file
-            f.write(
-            f"Test epoch {epoch}: Average losses:"
-            f"\tLoss: {loss.avg:.3f} |"
-            f"\tPSNR: {psnr.avg:.2f} |"
-            f"\tBpp loss: {bpp_loss.avg:.3f} |"
-            f"\tMSE loss: {mse_loss.avg:.4f} |"
-            f'\ty_norm1: {y_norm1.avg:.3f} |'
-            #f'\ty_norm2: {y_norm2.avg:.3f} |'
-            #f'\ty_norm10: {y_norm10.avg:.3f} |'
-            f'\tq_norm: {q_norm.avg:.3f} |\n'
-        )
-
-    return loss.avg, mse_loss.avg
+    return loss.avg
 
 
-def save_checkpoint(state, is_best, filename='mbt2018_q1_1e-6_1Pred1e-2_checkpoint.pth.tar'):
+def save_checkpoint(state, is_best, filename='factorizedprior_q4_baseline_checkpoint.pth.tar'):
     torch.save(state, filename)
     if is_best:
-        shutil.copyfile(filename, 'mbt2018_q1_1e-6_1Pred1e-2_checkpoint_best_loss.pth.tar')
+        shutil.copyfile(filename, 'factorizedprior_q4_baseline_checkpoint_best_loss.pth.tar')
+
 
 def parse_args(argv):
     parser = argparse.ArgumentParser(description="Example training script.")
     parser.add_argument(
         "-m",
         "--model",
-        #default="cheng2020-attn",
-        default="mbt2018",
+        default="bmshj2018-factorized",
+        #default="mbt2018-mean",
         choices=image_models.keys(),
         help="Model architecture (default: %(default)s)",
     )
@@ -231,8 +193,8 @@ def parse_args(argv):
     parser.add_argument(
         "-lr",
         "--learning-rate",
-        #default=1e-4,
-        default=1e-6,
+        default=1e-4,
+        #default=1e-6,
         type=float,
         help="Learning rate (default: %(default)s)",
     )
@@ -335,29 +297,29 @@ def main(argv):
         pin_memory=(device == "cuda"),
     )
 
-    net = image_models[args.model](quality=1)
+    net = image_models[args.model](quality=4)
     net = net.to(device)
 
     # if args.cuda and torch.cuda.device_count() > 1:
     #     net = CustomDataParallel(net)
 
-    #optimizer, aux_optimizer = configure_optimizers(net, args)
-    parameters = net.optim_parameters()
-    optimizer = torch.optim.Adam([{'params': parameters}], lr=1e-6, weight_decay=5e-4
-    )
+    optimizer, aux_optimizer = configure_optimizers(net, args)
+    # parameters = net.optim_parameters()
+    # optimizer = torch.optim.Adam([{'params': parameters}], lr=1e-6#, weight_decay=5e-4
+    # )
     lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, "min")
     criterion = RateDistortionLoss(lmbda=args.lmbda)
 
-    # TODO: CHANGEBACK
-    #bmshj2018_factorized_model = bmshj2018_factorized(quality=1, metric='mse', pretrained=True, progress=True)
-    #net.load_state_dict_whatever(bmshj2018_factorized_model.state_dict())
+    # TODO: BASELINE
+    mbt2018_model = mbt2018(quality=4, metric='mse', pretrained=True, progress=True)
+    net.load_state_dict(mbt2018_model.state_dict())
 
     last_epoch = 0
     if args.checkpoint:  # load from previous checkpoint
         print("Loading", args.checkpoint)
         checkpoint = torch.load(args.checkpoint, map_location=device)
         last_epoch = checkpoint["epoch"] + 1
-        net.load_state_dict_whatever(checkpoint["state_dict"])
+        net.load_state_dict(checkpoint["state_dict"])
         # optimizer.load_state_dict(checkpoint["optimizer"])
         # aux_optimizer.load_state_dict(checkpoint["aux_optimizer"])
         #lr_scheduler.load_state_dict(checkpoint["lr_scheduler"])
@@ -365,6 +327,7 @@ def main(argv):
     best_loss = float("inf")
     for epoch in range(last_epoch, args.epochs):
         print(f"Learning rate: {optimizer.param_groups[0]['lr']}")
+        #comment if want to skip train
         train_one_epoch(
             net,
             criterion,
@@ -374,11 +337,11 @@ def main(argv):
             epoch,
             args.clip_max_norm,
         )
-        loss, mse_loss = test_epoch(epoch, test_dataloader, net, criterion)
-        #lr_scheduler.step(loss)
+        loss = test_epoch(epoch, test_dataloader, net, criterion)
+        lr_scheduler.step(loss)
 
-        is_best = mse_loss < best_loss
-        best_loss = min(mse_loss, best_loss)
+        is_best = loss < best_loss
+        best_loss = min(loss, best_loss)
 
         if args.save:
             save_checkpoint(
